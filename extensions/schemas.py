@@ -14,8 +14,25 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from constants import EXTENSIONS_HTTP_UPSTREAM_ALLOWLIST
+
 _PLACEHOLDER_RE = re.compile(r"{([^{}]*)}")
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _http_upstream_is_allowed(hostname: str, port: int) -> bool:
+    normalized_hostname = hostname.lower().rstrip(".")
+    for entry in EXTENSIONS_HTTP_UPSTREAM_ALLOWLIST.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        allowed_host, separator, allowed_port = entry.rpartition(":")
+        allowed_host = allowed_host.strip().strip("[]").lower().rstrip(".")
+        if not separator or not allowed_host or allowed_port not in {"*", str(port)}:
+            continue
+        if normalized_hostname == allowed_host:
+            return True
+    return False
 
 
 class ManifestModel(BaseModel):
@@ -60,6 +77,9 @@ class HttpUpstreamSpec(ManifestModel):
             raise ValueError("base_url must not contain credentials")
         if parsed.query or parsed.fragment:
             raise ValueError("base_url must not contain a query string or fragment")
+        port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
+        if not _http_upstream_is_allowed(parsed.hostname, port):
+            raise ValueError("base_url host and port are not in EXTENSIONS_HTTP_UPSTREAM_ALLOWLIST")
         return value
 
 

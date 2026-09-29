@@ -101,6 +101,14 @@ def _validate_manifest_cross_references(registration: ExtensionRegistration) -> 
                     422,
                 )
 
+        if route.scoped and route.scope_in == "query":
+            scope_parameters = [parameter for parameter in route.query_params if parameter.name == route.scope_param]
+            if any(not parameter.required for parameter in scope_parameters):
+                raise APIError(
+                    f"Route '{route.path}' query scope parameter '{route.scope_param}' must be required",
+                    422,
+                )
+
         try:
             signature.build_signature(route.model_dump())
         except ValueError as exc:

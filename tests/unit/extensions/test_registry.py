@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import ValidationError
 
 from exceptions import APIError
 from extensions.registry import (
@@ -9,6 +10,7 @@ from extensions.registry import (
     _validate_manifest_cross_references,
 )
 from extensions.schemas import ExtensionRegistration
+import extensions.schemas as schemas
 
 
 def _registration(actions=None, required_action=None):
@@ -145,6 +147,16 @@ def test_scoped_public_route_requires_required_action():
     assert exc_info.value.status_code == 422
 
 
+def test_scoped_query_parameter_must_be_required():
+    registration = _iotedge_registration(
+        scoped=True,
+        query_params=[{"name": "device_id", "required": False}],
+    )
+
+    with pytest.raises(APIError, match="query scope parameter 'device_id' must be required"):
+        _validate_manifest_cross_references(registration)
+
+
 def _iotedge_registration(**route_overrides):
     route = {
         "upstream": "mod",
@@ -174,6 +186,26 @@ def test_public_iotedge_route_must_be_scoped():
 
 def test_internal_iotedge_route_may_be_unscoped():
     _validate_manifest_cross_references(_iotedge_registration(visibility="internal", required_action=None))
+
+
+def test_http_upstream_requires_an_allowlisted_host_and_port(monkeypatch):
+    monkeypatch.setattr(schemas, "EXTENSIONS_HTTP_UPSTREAM_ALLOWLIST", "localhost:*")
+
+    _registration_with_upstream("http://localhost:9000")
+
+    with pytest.raises(ValidationError, match="not in EXTENSIONS_HTTP_UPSTREAM_ALLOWLIST"):
+        _registration_with_upstream("https://widgets.example")
+
+
+def _registration_with_upstream(base_url):
+    return ExtensionRegistration.model_validate(
+        {
+            "schema_version": 1,
+            "name": "widgets",
+            "upstreams": {"svc": {"type": "http", "base_url": base_url}},
+            "routes": [],
+        }
+    )
 
 
 def test_registration_schema_does_not_advertise_server_computed_fields():
