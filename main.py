@@ -257,7 +257,14 @@ async def handle_http_exception(_: Request, ex: HTTPException):
 @app.exception_handler(RequestValidationError)
 async def handle_fast_api_req_validation_error(_: Request, ex: RequestValidationError):
     logger.error(f"RequestValidationError: [{ex}]")
-    return JSONResponse(status_code=400, content={"message": ex.body})
+    errors = [
+        {
+            "location": ".".join(str(part) for part in error["loc"] if part != "body"),
+            "message": error["msg"],
+        }
+        for error in ex.errors()
+    ]
+    return JSONResponse(status_code=400, content={"message": "Request validation failed", "errors": errors})
 
 
 @app.exception_handler(Exception)

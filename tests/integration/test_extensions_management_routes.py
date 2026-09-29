@@ -166,6 +166,23 @@ class TestExtensionsManagementRoutesAsAdmin:
         assert response.status_code == 422
         assert "Duplicate action names" in response.json()["message"]
 
+    async def test_register_returns_field_errors_for_invalid_manifest(self, client):
+        registration = _sample_registration(_unique_name("invalid_manifest_ext"))
+        registration["upstreams"]["svc"]["base_url"] = "ftp://not-allowed.example"
+
+        response = await client.post("/extensions", json=registration)
+
+        assert response.status_code == 400
+        assert response.json() == {
+            "message": "Request validation failed",
+            "errors": [
+                {
+                    "location": "upstreams.svc.http.base_url",
+                    "message": "Value error, base_url must be an absolute HTTP or HTTPS URL",
+                }
+            ],
+        }
+
     async def test_register_rejects_ownership_of_platform_action(self, client):
         name = _unique_name("platform_action_ext")
         registration = _sample_registration(name)
